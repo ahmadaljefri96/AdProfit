@@ -1,0 +1,8 @@
+{
+  "name": "Remix AdProfit Dashboard",
+  "description": "Dashboard pintar yang menggabungkan performa Iklan Meta dengan komisi Shopee Affiliate dalam satu tampilan terpadu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
