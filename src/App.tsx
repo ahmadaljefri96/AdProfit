@@ -427,7 +427,42 @@ function Im() {
     I.useEffect(() => {
         document.documentElement.classList.toggle("dark", Xt === "dark"), localStorage.setItem("adprofit_theme", Xt)
     }, [Xt]);
-    const [xa, ws] = I.useState(() => !localStorage.getItem("adprofit_welcomed") && !localStorage.getItem("shomet_welcomed")), [Dt, xr] = I.useState({
+    const [xa, ws] = I.useState(() => !localStorage.getItem("adprofit_welcomed") && !localStorage.getItem("shomet_welcomed"));
+    const [targetRoas, setTargetRoas] = I.useState<number>(() => {
+        try {
+            const v = localStorage.getItem("adprofit_target_roas");
+            return v ? Math.max(0.1, Number(v) || 1.0) : 1.0;
+        } catch { return 1.0; }
+    });
+    const [maxRiskBudget, setMaxRiskBudget] = I.useState<number>(() => {
+        try {
+            const v = localStorage.getItem("adprofit_max_risk");
+            return v ? Math.max(10000, Number(v) || 150000) : 150000;
+        } catch { return 150000; }
+    });
+    const [tagModes, setTagModes] = I.useState<Record<string, 'auto' | 'testing' | 'profitable'>>(() => {
+        try {
+            const v = localStorage.getItem("adprofit_tag_modes");
+            return v ? JSON.parse(v) : {};
+        } catch { return {}; }
+    });
+    I.useEffect(() => {
+        try { localStorage.setItem("adprofit_target_roas", String(targetRoas)); } catch {}
+    }, [targetRoas]);
+    I.useEffect(() => {
+        try { localStorage.setItem("adprofit_max_risk", String(maxRiskBudget)); } catch {}
+    }, [maxRiskBudget]);
+    I.useEffect(() => {
+        try { localStorage.setItem("adprofit_tag_modes", JSON.stringify(tagModes)); } catch {}
+    }, [tagModes]);
+    const toggleTagMode = (tName: string) => {
+        setTagModes(prev => {
+            const cur = prev[tName] || 'auto';
+            const nxt: 'auto' | 'testing' | 'profitable' = cur === 'auto' ? 'testing' : cur === 'testing' ? 'profitable' : 'auto';
+            return { ...prev, [tName]: nxt };
+        });
+    };
+    const [Dt, xr] = I.useState({
         show: !1,
         title: "",
         message: "",
@@ -4810,7 +4845,9 @@ function Im() {
                                 const tagCprc = (i.shopeeClicks || 0) > 0 ? tagSpend / i.shopeeClicks : (i.metaClicks > 0 ? tagSpend / i.metaClicks : 0);
                                 const tagEpc = (i.shopeeClicks || 0) > 0 ? (i.shopeeCommission || 0) / i.shopeeClicks : 0;
                                 const tagCookieMargin = tagEpc - tagCprc;
+                                const currentTagMode = tagModes[i.tag] || 'auto';
                                 const tagInsight = getAffiliateInsight({
+                                    campaignName: i.tag,
                                     roas: tagRoas,
                                     cpr: i.cpr,
                                     cprc: tagCprc,
@@ -4821,7 +4858,11 @@ function Im() {
                                     shopeeClicks: i.shopeeClicks,
                                     commission: i.shopeeCommission,
                                     profit: i.keuntungan,
-                                    daysActive: i.clickDates ? i.clickDates.length : undefined
+                                    orders: i.shopeeOrders,
+                                    daysActive: i.clickDates ? i.clickDates.length : undefined,
+                                    targetRoas,
+                                    maxRiskBudget,
+                                    manualMode: currentTagMode
                                 });
                                 const p = u % 2 === 0;
                                 return r.jsxs("tr", {
@@ -4865,6 +4906,32 @@ function Im() {
                                                     className: `inline-flex items-center text-[9px] font-black px-2.5 py-0.5 rounded-full border shadow-xs cursor-help transition-transform hover:scale-105 ${tagInsight.badgeCls}`,
                                                     title: `${tagInsight.description} → Tindakan: ${tagInsight.action}`,
                                                     children: tagInsight.label
+                                                }),
+                                                tagInsight.confidenceLevel && r.jsx("span", {
+                                                    className: `inline-flex items-center text-[8px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider border ${
+                                                        tagInsight.confidenceLevel === 'TINGGI'
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                                            : tagInsight.confidenceLevel === 'SEDANG'
+                                                            ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                                                            : 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400'
+                                                    }`,
+                                                    title: `Tingkat Keyakinan: ${tagInsight.confidenceLevel}`,
+                                                    children: tagInsight.confidenceLevel
+                                                }),
+                                                r.jsxs("button", {
+                                                    type: "button",
+                                                    onClick: (e) => { e.stopPropagation(); toggleTagMode(i.tag); },
+                                                    className: `inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.2 rounded-md border cursor-pointer transition-all hover:scale-105 ${
+                                                        currentTagMode === 'testing'
+                                                            ? 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300'
+                                                            : currentTagMode === 'profitable'
+                                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                                                    }`,
+                                                    title: `Mode: ${currentTagMode.toUpperCase()}. Klik untuk ganti (Auto → Testing → Profitable)`,
+                                                    children: [
+                                                        currentTagMode === 'auto' ? 'Auto (3H)' : currentTagMode === 'testing' ? 'Testing' : 'Profitable'
+                                                    ]
                                                 }),
                                                 (i.shopeeClicks > 0 || tagSpend > 0) && r.jsxs("span", {
                                                     className: `inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full border shadow-2xs ${
@@ -6605,7 +6672,9 @@ function Im() {
             const epc = drilldown.epc;
             const leakagePct = Math.round(drilldown.overallLeakagePct || 0);
 
+            const currentTagMode = tagModes[placementDrilldownTag.tag] || 'auto';
             const modalInsight = getAffiliateInsight({
+                campaignName: placementDrilldownTag.tag,
                 roas,
                 cpr,
                 cprc,
@@ -6615,7 +6684,21 @@ function Im() {
                 clicks: totalMetaClicks,
                 shopeeClicks: activeShopeeClicks,
                 commission: activeShopeeComm,
-                profit: activeShopeeComm - totalSpent
+                profit: activeShopeeComm - totalSpent,
+                orders: activeShopeeOrders,
+                daysActive: dailyRows.length,
+                dailyBreakdown: dailyRows.map(d => ({
+                    date: d.date,
+                    spend: d.spend || 0,
+                    commission: d.commission || 0,
+                    orders: d.orders || 0,
+                    clicks: d.metaClicks || 0,
+                    shopeeClicks: d.shopeeClicks || 0,
+                    roas: d.roas
+                })),
+                targetRoas,
+                maxRiskBudget,
+                manualMode: currentTagMode
             });
 
             const activeSubName = activeSub === 'all' ? 'Semua Terkait' : getMetaItemName(activeSub);
@@ -6781,34 +6864,116 @@ function Im() {
                                     ]
                                 }),
 
-                                // ACTIONABLE INSIGHT BANNER
+                                // ACTIONABLE DECISION & AUDIT BANNER
                                 r.jsxs("div", {
-                                    className: `p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${modalInsight.badgeCls}`,
+                                    className: `p-4 sm:p-5 rounded-2xl border flex flex-col gap-3.5 shadow-xs ${modalInsight.badgeCls}`,
                                     children: [
                                         r.jsxs("div", {
-                                            className: "flex items-start gap-2.5",
+                                            className: "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3",
                                             children: [
-                                                r.jsx("span", {
-                                                    className: "text-base mt-0.5",
-                                                    children: modalInsight.label.split(" ")[0]
+                                                r.jsxs("div", {
+                                                    className: "flex items-start gap-2.5",
+                                                    children: [
+                                                        r.jsx("span", {
+                                                            className: "text-2xl mt-0.5",
+                                                            children: modalInsight.label.split(" ")[0]
+                                                        }),
+                                                        r.jsxs("div", {
+                                                            children: [
+                                                                r.jsxs("div", {
+                                                                    className: "flex flex-wrap items-center gap-2",
+                                                                    children: [
+                                                                        r.jsxs("span", {
+                                                                            className: "font-black text-sm tracking-wide uppercase",
+                                                                            children: ["Status Keputusan: ", modalInsight.label]
+                                                                        }),
+                                                                        modalInsight.confidenceLevel && r.jsxs("span", {
+                                                                            className: `text-[10px] font-black px-2 py-0.5 rounded-full border shadow-2xs ${
+                                                                                modalInsight.confidenceLevel === 'TINGGI'
+                                                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                                                                                    : modalInsight.confidenceLevel === 'SEDANG'
+                                                                                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                                                                                    : 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300'
+                                                                            }`,
+                                                                            children: ["Keyakinan: ", modalInsight.confidenceLevel]
+                                                                        })
+                                                                    ]
+                                                                }),
+                                                                r.jsx("div", {
+                                                                    className: "text-xs opacity-95 mt-1 leading-relaxed font-medium",
+                                                                    children: modalInsight.description
+                                                                })
+                                                            ]
+                                                        })
+                                                    ]
                                                 }),
                                                 r.jsxs("div", {
+                                                    className: "flex flex-col sm:items-end gap-1.5 flex-shrink-0 self-stretch sm:self-auto",
                                                     children: [
-                                                        r.jsxs("div", {
-                                                            className: "font-black text-xs tracking-wide uppercase",
-                                                            children: ["Rekomendasi Tindakan: ", modalInsight.label]
-                                                        }),
                                                         r.jsx("div", {
-                                                            className: "text-[11px] opacity-90 mt-0.5 leading-snug font-medium",
-                                                            children: modalInsight.description
+                                                            className: "text-xs font-black px-3.5 py-2 rounded-xl bg-white/80 dark:bg-black/40 border border-current shadow-xs text-center",
+                                                            children: modalInsight.action
+                                                        }),
+                                                        r.jsxs("div", {
+                                                            className: "flex items-center gap-1 self-center sm:self-end mt-0.5",
+                                                            children: [
+                                                                r.jsx("span", { className: "text-[9px] font-bold opacity-75 uppercase", children: "Mode:" }),
+                                                                ['auto', 'testing', 'profitable'].map(mOption => r.jsx("button", {
+                                                                    key: mOption,
+                                                                    type: "button",
+                                                                    onClick: () => {
+                                                                        setTagModes(prev => ({ ...prev, [placementDrilldownTag.tag]: mOption as any }));
+                                                                    },
+                                                                    className: `text-[9px] font-black px-2 py-0.5 rounded-md border cursor-pointer transition-all ${
+                                                                        currentTagMode === mOption
+                                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs scale-105'
+                                                                            : 'bg-white/60 dark:bg-black/20 hover:bg-white text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                                                                    }`,
+                                                                    children: mOption === 'auto' ? 'Auto (3H)' : mOption === 'testing' ? 'Testing' : 'Profitable'
+                                                                }))
+                                                            ]
                                                         })
                                                     ]
                                                 })
                                             ]
                                         }),
-                                        r.jsx("div", {
-                                            className: "text-xs font-bold px-3 py-1.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current flex-shrink-0 self-stretch sm:self-auto text-center",
-                                            children: modalInsight.action
+                                        // 13-Point Structured Audit Breakdown
+                                        modalInsight.decisionReport && r.jsxs("div", {
+                                            className: "pt-3 border-t border-current/20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px]",
+                                            children: [
+                                                r.jsxs("div", {
+                                                    className: "p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20",
+                                                    children: [
+                                                        r.jsx("div", { className: "text-[9.5px] font-bold opacity-70 uppercase tracking-wider", children: "1. Mode & Periode" }),
+                                                        r.jsxs("div", { className: "font-black mt-0.5", children: [modalInsight.decisionReport['3_analysisMode'], " (", modalInsight.decisionReport['2_analysisPeriod'], ")"] }),
+                                                        r.jsxs("div", { className: "text-[9px] opacity-75 mt-0.5", children: ["Sumber: ", modalInsight.decisionReport.modeSource] })
+                                                    ]
+                                                }),
+                                                r.jsxs("div", {
+                                                    className: "p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20",
+                                                    children: [
+                                                        r.jsx("div", { className: "text-[9.5px] font-bold opacity-70 uppercase tracking-wider", children: "2. ROAS Kumulatif vs Target" }),
+                                                        r.jsxs("div", { className: "font-black font-mono mt-0.5", children: [modalInsight.decisionReport['6_dailyAndCumulativeRoas'].cumulativeRoas.toFixed(2), "x (Target: ", targetRoas.toFixed(2), "x)"] }),
+                                                        r.jsxs("div", { className: "text-[9px] opacity-75 mt-0.5", children: ["ROI: ", modalInsight.decisionReport['7_roiOnAdSpend'].toFixed(1), "%"] })
+                                                    ]
+                                                }),
+                                                r.jsxs("div", {
+                                                    className: "p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20",
+                                                    children: [
+                                                        r.jsx("div", { className: "text-[9.5px] font-bold opacity-70 uppercase tracking-wider", children: "3. Skenario Terdeteksi" }),
+                                                        r.jsx("div", { className: "font-black mt-0.5 truncate", title: modalInsight.decisionReport['9_detectedScenario'], children: modalInsight.decisionReport['9_detectedScenario'] }),
+                                                        r.jsx("div", { className: "text-[9px] opacity-75 mt-0.5 truncate", children: modalInsight.decisionReport['8_performanceTrend'] })
+                                                    ]
+                                                }),
+                                                r.jsxs("div", {
+                                                    className: "p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20",
+                                                    children: [
+                                                        r.jsx("div", { className: "text-[9.5px] font-bold opacity-70 uppercase tracking-wider", children: "4. Risiko & Batas Evaluasi" }),
+                                                        r.jsx("div", { className: "font-black mt-0.5 text-rose-700 dark:text-rose-300 truncate", title: modalInsight.decisionReport['12_dataRisksOrLimitations'], children: modalInsight.decisionReport['12_dataRisksOrLimitations'] }),
+                                                        r.jsxs("div", { className: "text-[9px] opacity-75 mt-0.5", children: ["Batas Risiko: Rp ", Math.round(maxRiskBudget).toLocaleString('id-ID')] })
+                                                    ]
+                                                })
+                                            ]
                                         })
                                     ]
                                 }),

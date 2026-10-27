@@ -680,7 +680,16 @@ export function getLeakageBadgeStyle(persentaseBocor: number): {
   };
 }
 
+import {
+  evaluateCampaignDecision,
+  DecisionReport13,
+  DecisionStatus,
+  ConfidenceLevel,
+  DailyPoint,
+} from './decisionEngine';
+
 export interface AffiliateMetricsInput {
+  campaignName?: string;
   roas?: number | null;
   cpr?: number | null;
   cprc?: number | null;
@@ -692,6 +701,12 @@ export interface AffiliateMetricsInput {
   commission?: number | null;
   profit?: number | null;
   daysActive?: number | null;
+  orders?: number | null;
+  dailyBreakdown?: DailyPoint[];
+  targetRoas?: number;
+  maxRiskBudget?: number;
+  manualMode?: 'auto' | 'testing' | 'profitable';
+  dateRangeLabel?: string;
 }
 
 export interface AffiliateInsightResult {
@@ -703,6 +718,9 @@ export interface AffiliateInsightResult {
   cprcText?: string;
   epcText?: string;
   marginText?: string;
+  decisionReport?: DecisionReport13;
+  decisionStatus?: DecisionStatus;
+  confidenceLevel?: ConfidenceLevel;
 }
 
 /**
@@ -723,16 +741,6 @@ export function getAffiliateInsight(metrics: AffiliateMetricsInput): AffiliateIn
   const rawComm = Number(m.commission);
   const numComm = isNaN(rawComm) || !isFinite(rawComm) ? 0 : Math.max(0, rawComm);
 
-  let numRoas: number;
-  const rawRoas = Number(m.roas);
-  if (!isNaN(rawRoas) && isFinite(rawRoas)) {
-    numRoas = rawRoas;
-  } else if (numSpend > 0) {
-    numRoas = numComm / numSpend;
-  } else {
-    numRoas = numComm > 0 ? 99 : 0;
-  }
-
   const numCprc = numShopeeClicks > 0 ? numSpend / numShopeeClicks : (numClicks > 0 ? numSpend / numClicks : 0);
   const numEpc = numShopeeClicks > 0 ? numComm / numShopeeClicks : 0;
   const cookieMargin = numEpc - numCprc;
@@ -748,134 +756,38 @@ export function getAffiliateInsight(metrics: AffiliateMetricsInput): AffiliateIn
   }
 
   const daysActive = m.daysActive !== undefined && m.daysActive !== null ? Number(m.daysActive) : undefined;
-  const rawProfit = m.profit !== undefined && m.profit !== null ? Number(m.profit) : (numComm - numSpend);
 
-  // KONDISI GUARDRAIL: Data Belum Valid
-  if (numSpend < 10000 || numClicks === 0) {
-    if (numSpend === 0 && numClicks === 0) {
-      return {
-        label: '⏳ BELUM ADA SPEND',
-        tone: 'gray',
-        badgeCls: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 font-bold',
-        description: 'Belum ada pengeluaran iklan Meta terdata pada periode atau kaitan ini.',
-        action: 'Kaitkan campaign/ad set aktif atau mulai jalankan iklan untuk menanam cookie.',
-      };
-    }
-    return {
-      label: '⏳ DATA BELUM CUKUP',
-      tone: 'gray',
-      badgeCls: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 font-bold',
-      description: 'Belanja iklan baru Rp ' + Math.round(numSpend).toLocaleString('id-ID') + ' (< Rp 10.000) atau baru ' + numClicks + ' klik.',
-      action: 'Biarkan iklan berjalan sampai minimal Rp 10.000 spend untuk pengumpulan data awal.',
-    };
-  }
+  // Evaluasi Keputusan Berdasarkan Kerangka Kerja Pengambilan Keputusan Baku
+  const decision = evaluateCampaignDecision({
+    campaignName: m.campaignName || 'Campaign / Tag',
+    spend: numSpend,
+    commission: numComm,
+    clicks: numClicks,
+    shopeeClicks: numShopeeClicks,
+    orders: m.orders !== undefined && m.orders !== null ? Number(m.orders) : undefined,
+    daysActive,
+    dailyBreakdown: m.dailyBreakdown,
+    targetRoas: m.targetRoas,
+    maxRiskBudget: m.maxRiskBudget,
+    manualMode: m.manualMode,
+    dateRangeLabel: m.dateRangeLabel,
+  });
 
-  // PRIORITAS 1: EVALUASI KEBOCORAN KRITIS (> 70%)
-  if (numLeakage > 70) {
-    return {
-      label: '⚠️ BOCOR PARAH (>70%)',
-      tone: 'crimson',
-      badgeCls: 'bg-red-200 dark:bg-red-950/80 text-red-900 dark:text-red-200 border-red-400 dark:border-red-800 font-black',
-      description: 'Kebocoran ' + numLeakage + '%. Lebih dari 70% klik Meta hilang sebelum membuka Shopee (CPRC bengkak ke Rp ' + Math.round(numCprc) + '/cookie).',
-      action: 'Matikan penempatan Audience Network, cek kestabilan direct link Shopee, atau gunakan universal deep-link.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-      epcText: 'EPC: Rp ' + Math.round(numEpc),
-    };
-  }
-
-  // PRIORITAS 2: FASE TANAM COOKIE (Cookie Maturing D+0 s.d D+2)
-  if (daysActive !== undefined && daysActive <= 2 && numShopeeClicks >= 5 && numLeakage <= 70) {
-    return {
-      label: '🌱 COOKIE MATURING (D+0 s.d D+2)',
-      tone: 'blue',
-      badgeCls: 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700 font-bold',
-      description: 'Sebanyak ' + numShopeeClicks + ' cookie berhasil ditanam (CPRC Rp ' + Math.round(numCprc) + '). Pembeli masih dalam proses menimbun keranjang belanja.',
-      action: 'Jangan di-kill! Beri waktu 3-7 hari untuk memanen komisi checkout dari keranjang pembeli.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-      epcText: 'EPC: Rp ' + Math.round(numEpc),
-    };
-  }
-
-  // PRIORITAS 3: SCALE UP (Unit Economics Sangat Menguntungkan)
-  if (numRoas > 2.0 || (numShopeeClicks >= 15 && numEpc > 1.3 * numCprc)) {
-    return {
-      label: '🔥 SCALE UP (Unit Economics Super)',
-      tone: 'green',
-      badgeCls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 font-black',
-      description: 'ROAS tinggi (' + numRoas.toFixed(2) + 'x) dan setiap 1 cookie menghasilkan Rp ' + Math.round(numEpc) + ' vs modal Rp ' + Math.round(numCprc) + ' (Margin +Rp ' + Math.round(cookieMargin) + ').',
-      action: 'Naikkan budget harian 15-20% atau duplikasi ke target audiens baru untuk menanam lebih banyak cookies.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-      epcText: 'EPC: Rp ' + Math.round(numEpc),
-      marginText: '+Rp ' + Math.round(cookieMargin) + '/cookie',
-    };
-  }
-
-  // PRIORITAS 4: PERTAHANKAN (Unit Economics Sehat & Stabil)
-  if ((numRoas >= 1.0 && numRoas <= 2.0) || (numShopeeClicks >= 10 && numEpc >= numCprc)) {
-    return {
-      label: '⚖️ PERTAHANKAN (Cookie Stabil)',
-      tone: 'blue',
-      badgeCls: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 font-bold',
-      description: 'ROAS stabil (' + numRoas.toFixed(2) + 'x) dengan margin cookie impas/untung (EPC Rp ' + Math.round(numEpc) + ' vs CPRC Rp ' + Math.round(numCprc) + ').',
-      action: 'Pertahankan kampanye dan pantau panen keranjang belanja harian.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-      epcText: 'EPC: Rp ' + Math.round(numEpc),
-    };
-  }
-
-  // PRIORITAS 5: PERBAIKI BOCOR (Kebocoran Sedang 50% - 70%)
-  if (numLeakage >= 50 && numLeakage <= 70) {
-    return {
-      label: '🔧 PERBAIKI BOCOR (50-70%)',
-      tone: 'orange',
-      badgeCls: 'bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-700 font-black',
-      description: 'Kebocoran ' + numLeakage + '% menyebabkan biaya tanam cookie naik menjadi Rp ' + Math.round(numCprc) + '/cookie.',
-      action: 'Fokuskan penempatan pada Instagram Feed & Reels, hindari link landing page yang berat.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-    };
-  }
-
-  // PRIORITAS 6: FASE KILL (Hanya jika data sudah matang dan CPRC boncos parah)
-  if (numRoas < 0.7 && (daysActive === undefined || daysActive >= 3) && (numCprc > 1500 || (numShopeeClicks >= 25 && numEpc < 0.35 * numCprc))) {
-    return {
-      label: '🛑 KILL (Biaya Tanam Boncos)',
-      tone: 'red',
-      badgeCls: 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-700 font-black',
-      description: 'Biaya per cookie (CPRC Rp ' + Math.round(numCprc) + ') terlalu mahal dan hasil konversi (EPC Rp ' + Math.round(numEpc) + ') tidak memadai setelah masa maturing.',
-      action: 'Matikan campaign/ad set ini sekarang untuk menghentikan pemborosan budget. Ganti materi kreatif iklan.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-      epcText: 'EPC: Rp ' + Math.round(numEpc),
-    };
-  }
-
-  // PRIORITAS 7: WAIT & SEE (Kebocoran Rendah, Menunggu Siklus 7 Hari)
-  if (numRoas < 1.0 && numLeakage < 50) {
-    return {
-      label: '👀 WAIT & SEE (Pantau Siklus 7H)',
-      tone: 'yellow',
-      badgeCls: 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 font-bold',
-      description: 'Kebocoran rendah (' + numLeakage + '%) dan biaya per cookie murah (CPRC Rp ' + Math.round(numCprc) + '). Pembeli masih dalam jendela 7 hari belanja.',
-      action: 'Pantau 1-3 hari ke depan untuk melihat akumulasi komisi dari keranjang belanja.',
-      cprcText: 'CPRC: Rp ' + Math.round(numCprc),
-    };
-  }
-
-  // DEFAULT SMART INSIGHT (Pengganti N/A): Sesuai Sinyal Data
-  if (rawProfit > 0) {
-    return {
-      label: '🔥 PROFITABLE (Net Positif)',
-      tone: 'green',
-      badgeCls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 font-bold',
-      description: 'Menghasilkan profit bersih positif (+Rp ' + Math.round(rawProfit).toLocaleString('id-ID') + ').',
-      action: 'Pertahankan kampanye dan pantau akumulasi omset mingguan.',
-    };
-  }
+  const cprcText = numShopeeClicks > 0 || numClicks > 0 ? 'CPRC: Rp ' + Math.round(numCprc) : undefined;
+  const epcText = numShopeeClicks > 0 ? 'EPC: Rp ' + Math.round(numEpc) : undefined;
+  const marginText = numShopeeClicks > 0 ? (cookieMargin >= 0 ? '+' : '') + 'Rp ' + Math.round(cookieMargin) + '/cookie' : undefined;
 
   return {
-    label: '📊 PANTAU TREN (Siklus 7 Hari)',
-    tone: 'blue',
-    badgeCls: 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700 font-bold',
-    description: 'Iklan aktif dengan ' + numShopeeClicks + ' cookies tertanam (CPRC Rp ' + Math.round(numCprc) + ').',
-    action: 'Amati konversi delayed attribution selama 7 hari sebelum mengubah struktur iklan.',
+    label: `${decision.statusIcon} ${decision['10_decisionStatus']}`,
+    tone: decision.tone,
+    badgeCls: decision.badgeCls,
+    description: decision['11_dataBackedReason'],
+    action: decision['13_recommendedNextAction'],
+    cprcText,
+    epcText,
+    marginText,
+    decisionReport: decision,
+    decisionStatus: decision['10_decisionStatus'],
+    confidenceLevel: decision.confidenceLevel,
   };
 }

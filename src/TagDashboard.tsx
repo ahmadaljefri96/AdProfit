@@ -323,6 +323,7 @@ export const TagDashboard: React.FC<TagDashboardProps> = ({
 
     // Actionable affiliate insight
     const insight = getAffiliateInsight({
+      campaignName: effectiveTag || targetLabel,
       roas,
       cpr,
       cprc,
@@ -332,7 +333,18 @@ export const TagDashboard: React.FC<TagDashboardProps> = ({
       clicks: totalMetaClicks,
       shopeeClicks: totalShopeeClicks,
       commission: totalCommission,
-      profit
+      profit,
+      orders: totalOrders,
+      daysActive: dailyRows.length,
+      dailyBreakdown: dailyRows.map(d => ({
+        date: d.date,
+        spend: d.spend || 0,
+        commission: d.commission || 0,
+        orders: d.orders || 0,
+        clicks: d.metaClicks || 0,
+        shopeeClicks: d.shopeeClicks || 0,
+        roas: d.roas
+      })),
     });
 
     return {
@@ -837,35 +849,73 @@ export const TagDashboard: React.FC<TagDashboardProps> = ({
         )}
       </div>
 
-      {/* 2. ACTIONABLE AFFILIATE INSIGHT BANNER */}
+      {/* 2. ACTIONABLE DECISION & AUDIT BANNER */}
       <div
-        className={`p-5 sm:p-6 rounded-3xl border shadow-sm transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${activeEvaluation.insight.badgeCls}`}
+        className={`p-5 sm:p-6 rounded-3xl border shadow-sm transition-all flex flex-col gap-3.5 ${activeEvaluation.insight.badgeCls}`}
       >
-        <div className="flex items-start gap-3.5">
-          <div className="text-2xl mt-0.5">{activeEvaluation.insight.label.split(' ')[0]}</div>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-black text-sm tracking-wide uppercase">
-                Rekomendasi Saran Strategis: {activeEvaluation.insight.label}
-              </span>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono font-bold">
-                ROAS: {activeEvaluation.roas.toFixed(2)}x
-              </span>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono font-bold">
-                Bocor: {Math.round(activeEvaluation.leakageInfo.persentaseBocor)}%
-              </span>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="text-3xl mt-0.5">{activeEvaluation.insight.label.split(' ')[0]}</div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-black text-sm tracking-wide uppercase">
+                  Status Keputusan: {activeEvaluation.insight.label}
+                </span>
+                {activeEvaluation.insight.confidenceLevel && (
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border shadow-2xs ${
+                    activeEvaluation.insight.confidenceLevel === 'TINGGI'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                      : activeEvaluation.insight.confidenceLevel === 'SEDANG'
+                      ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                      : 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300'
+                  }`}>
+                    Keyakinan: {activeEvaluation.insight.confidenceLevel}
+                  </span>
+                )}
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono font-bold">
+                  ROAS Kumulatif: {activeEvaluation.roas.toFixed(2)}x
+                </span>
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono font-bold">
+                  Bocor: {Math.round(activeEvaluation.leakageInfo.persentaseBocor)}%
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm font-medium opacity-95 leading-relaxed max-w-3xl">
+                {activeEvaluation.insight.description}
+              </p>
             </div>
-            <p className="text-xs sm:text-sm font-medium opacity-95 leading-relaxed max-w-3xl">
-              {activeEvaluation.insight.description}
-            </p>
+          </div>
+
+          <div className="flex-shrink-0 self-stretch md:self-auto text-center">
+            <div className="text-xs sm:text-sm font-black px-4 py-2 rounded-2xl bg-white/80 dark:bg-black/40 border border-current shadow-xs">
+              {activeEvaluation.insight.action}
+            </div>
           </div>
         </div>
 
-        <div className="flex-shrink-0 self-stretch md:self-auto text-center">
-          <div className="text-xs sm:text-sm font-black px-4 py-2 rounded-2xl bg-white/80 dark:bg-black/40 border border-current shadow-xs">
-            {activeEvaluation.insight.action}
+        {activeEvaluation.insight.decisionReport && (
+          <div className="pt-3 border-t border-current/20 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px]">
+            <div className="p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20">
+              <div className="text-[9.5px] font-bold opacity-70 uppercase tracking-wider">Mode & Periode</div>
+              <div className="font-black mt-0.5">{activeEvaluation.insight.decisionReport['3_analysisMode']} ({activeEvaluation.insight.decisionReport['2_analysisPeriod']})</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20">
+              <div className="text-[9.5px] font-bold opacity-70 uppercase tracking-wider">Skenario Terdeteksi</div>
+              <div className="font-black mt-0.5 truncate" title={activeEvaluation.insight.decisionReport['9_detectedScenario']}>
+                {activeEvaluation.insight.decisionReport['9_detectedScenario']}
+              </div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20">
+              <div className="text-[9.5px] font-bold opacity-70 uppercase tracking-wider">ROI atas Biaya Iklan</div>
+              <div className="font-black mt-0.5 font-mono">{activeEvaluation.insight.decisionReport['7_roiOnAdSpend'].toFixed(1)}%</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/70 dark:bg-black/30 border border-current/20">
+              <div className="text-[9.5px] font-bold opacity-70 uppercase tracking-wider">Risiko / Keterbatasan Data</div>
+              <div className="font-black mt-0.5 text-rose-700 dark:text-rose-300 truncate" title={activeEvaluation.insight.decisionReport['12_dataRisksOrLimitations']}>
+                {activeEvaluation.insight.decisionReport['12_dataRisksOrLimitations']}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 3. TOP KPI STAT CARDS (SAMA PERSIS DENGAN DASHBOARD UTAMA) */}
